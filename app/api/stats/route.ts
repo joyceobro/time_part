@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { currentUserId } from "@/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** GET /api/stats?weeks=12 — per-week planned vs done, with per-category breakdown. */
 export async function GET(req: NextRequest) {
-  const weeks = Math.min(52, Math.max(1, Math.round(Number(req.nextUrl.searchParams.get("weeks")) || 12)));
+  const uid = await currentUserId();
+  if (!uid) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const weeks = Math.min(
+    52,
+    Math.max(1, Math.round(Number(req.nextUrl.searchParams.get("weeks")) || 12)),
+  );
 
   const [settingsRows, categories, rows] = await Promise.all([
-    sql`select total_pieces from settings where id = 1`,
-    sql`select id, name, color from categories order by sort_order asc, id asc`,
+    sql`select total_pieces from user_settings where user_id = ${uid}`,
+    sql`select id, name, color from categories where user_id = ${uid} order by sort_order asc, id asc`,
     sql`
       select
         to_char(week_start, 'YYYY-MM-DD') as week,
@@ -18,13 +25,13 @@ export async function GET(req: NextRequest) {
         count(*)::int as planned,
         count(*) filter (where checked)::int as done
       from slots
-      where week_start >= (date_trunc('week', current_date) - make_interval(weeks => ${weeks - 1}))
+      where user_id = ${uid}
+        and week_start >= (date_trunc('week', current_date) - make_interval(weeks => ${weeks - 1}))
       group by week_start, category_id
       order by week_start desc
     `,
   ]);
 
-  const catMap = new Map(categories.map((c) => [c.id as number, c]));
   const byWeek = new Map<
     string,
     { week: string; planned: number; done: number; byCategory: Record<number, { planned: number; done: number }> }

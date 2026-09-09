@@ -1,20 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, sessionToken } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 
-const PUBLIC_PATHS = ["/login", "/api/login"];
-
-export async function proxy(req: NextRequest) {
+/**
+ * Route protection. Auth.js populates `req.auth` with the session (or null).
+ * - /login: always allowed (redirect to / if already signed in)
+ * - /api/*: 401 JSON when not signed in
+ * - everything else: redirect to /login when not signed in
+ * /api/auth/* is excluded via the matcher below so sign-in can run.
+ */
+export const proxy = auth((req) => {
   const { pathname } = req.nextUrl;
+  const isAuthed = Boolean(req.auth);
 
-  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+  if (pathname === "/login") {
+    if (isAuthed) return NextResponse.redirect(new URL("/", req.nextUrl));
     return NextResponse.next();
   }
 
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const expected = await sessionToken();
-  const authed = token != null && token === expected;
-
-  if (authed) return NextResponse.next();
+  if (isAuthed) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -22,10 +25,11 @@ export async function proxy(req: NextRequest) {
 
   const url = req.nextUrl.clone();
   url.pathname = "/login";
-  url.searchParams.set("next", pathname);
   return NextResponse.redirect(url);
-}
+});
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  matcher: [
+    "/((?!api/auth|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+  ],
 };

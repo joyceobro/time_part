@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { api } from "@/lib/client";
+import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/", label: "배치", icon: "▦" },
@@ -11,9 +10,8 @@ const TABS = [
   { href: "/settings", label: "설정", icon: "⚙" },
 ];
 
-export default function Nav() {
+export default function Nav({ signOutAction }: { signOutAction: () => Promise<void> }) {
   const pathname = usePathname();
-  const router = useRouter();
 
   if (pathname === "/login") return null;
 
@@ -38,16 +36,15 @@ export default function Nav() {
             </Link>
           );
         })}
-        <button
-          onClick={async () => {
-            await api.logout().catch(() => {});
-            router.push("/login");
-          }}
-          className="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs text-muted"
-        >
-          <span className="text-lg leading-none">⎋</span>
-          로그아웃
-        </button>
+        <form action={signOutAction} className="flex flex-1">
+          <button
+            type="submit"
+            className="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs text-muted"
+          >
+            <span className="text-lg leading-none">⎋</span>
+            로그아웃
+          </button>
+        </form>
       </div>
     </nav>
   );

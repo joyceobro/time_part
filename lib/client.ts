@@ -64,7 +64,6 @@ export const api = {
     req<Slot>(`/api/slots/${id}`, { method: "PATCH", body: JSON.stringify({ weekday }) }),
   deleteSlot: (id: number) =>
     req<{ ok: true }>(`/api/slots/${id}`, { method: "DELETE" }),
-  logout: () => req<{ ok: true }>("/api/login", { method: "DELETE" }),
 };
 
 export const CATEGORY_COLORS = [

@@ -1,5 +1,7 @@
-// Run the SQL schema against DATABASE_URL. Idempotent.
-// Usage: node scripts/migrate.mjs   (or: npm run db:migrate)
+// Apply db/schema.sql against DATABASE_URL. Idempotent.
+// Usage: node scripts/migrate.mjs            (schema only)
+//        LEGACY_USER=me@example.com node scripts/migrate.mjs   (also claim
+//        pre-multiuser rows for that user id)
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -28,20 +30,21 @@ if (!process.env.DATABASE_URL) {
 }
 
 const sql = neon(process.env.DATABASE_URL);
-const rawSchema = readFileSync(join(__dirname, "..", "db", "schema.sql"), "utf8");
 
-// Drop full-line comments, then split on statement-terminating semicolons.
-const schema = rawSchema
-  .split("\n")
-  .filter((line) => !/^\s*--/.test(line))
-  .join("\n");
+function splitStatements(text) {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*--/.test(line))
+    .join("\n")
+    .split(/;\s*(?:\n|$)/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
-const statements = schema
-  .split(/;\s*(?:\n|$)/)
-  .map((s) => s.trim())
-  .filter(Boolean);
+const schema = readFileSync(join(__dirname, "..", "db", "schema.sql"), "utf8");
+const statements = splitStatements(schema);
 
-console.log(`Applying ${statements.length} statements...`);
+console.log(`Applying ${statements.length} schema statements...`);
 for (const stmt of statements) {
   try {
     await sql.query(stmt);
@@ -52,4 +55,30 @@ for (const stmt of statements) {
     process.exit(1);
   }
 }
-console.log("Migration complete.");
+
+const legacy = process.env.LEGACY_USER;
+if (legacy) {
+  console.log(`\nClaiming pre-multiuser rows for "${legacy}"...`);
+  try {
+    const hasOldSettings = await sql`
+      select 1 from information_schema.tables
+      where table_name = 'settings' limit 1
+    `;
+    if (hasOldSettings.length) {
+      await sql`
+        insert into user_settings (user_id, total_pieces)
+        select ${legacy}, total_pieces from settings where id = 1
+        on conflict (user_id) do nothing
+      `;
+      console.log("  user_settings backfilled from legacy settings row");
+    }
+    const c = await sql`update categories set user_id = ${legacy} where user_id is null`;
+    const s = await sql`update slots set user_id = ${legacy} where user_id is null`;
+    console.log(`  categories claimed: ${c.length ?? "ok"}, slots claimed: ${s.length ?? "ok"}`);
+  } catch (err) {
+    console.error("  backfill FAILED:", err.message);
+    process.exit(1);
+  }
+}
+
+console.log("\nMigration complete.");

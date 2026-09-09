@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { currentUserId } from "@/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,14 +12,16 @@ type Ctx = { params: Promise<{ id: string }> };
  * Toggle a piece's checked state and/or move it to another weekday.
  */
 export async function PATCH(req: NextRequest, ctx: Ctx) {
+  const uid = await currentUserId();
+  if (!uid) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const { id: idStr } = await ctx.params;
   const id = Number(idStr);
   if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
 
   const body = await req.json().catch(() => ({}));
   const checked = body?.checked != null ? Boolean(body.checked) : undefined;
-  const weekday =
-    body?.weekday != null ? Math.round(Number(body.weekday)) : undefined;
+  const weekday = body?.weekday != null ? Math.round(Number(body.weekday)) : undefined;
 
   if (weekday != null && !(weekday >= 0 && weekday <= 6)) {
     return NextResponse.json({ error: "weekday must be 0..6" }, { status: 400 });
@@ -31,7 +34,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     update slots set
       checked = coalesce(${checked ?? null}, checked),
       weekday = coalesce(${weekday ?? null}, weekday)
-    where id = ${id}
+    where id = ${id} and user_id = ${uid}
     returning id, weekday, category_id, checked
   `;
   if (rows.length === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -45,9 +48,13 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
+  const uid = await currentUserId();
+  if (!uid) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const { id: idStr } = await ctx.params;
   const id = Number(idStr);
   if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
-  await sql`delete from slots where id = ${id}`;
+
+  await sql`delete from slots where id = ${id} and user_id = ${uid}`;
   return NextResponse.json({ ok: true });
 }

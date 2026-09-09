@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { currentUserId } from "@/auth";
 import { isValidISO, mondayOf } from "@/lib/week";
 
 export const runtime = "nodejs";
@@ -12,6 +13,9 @@ export const dynamic = "force-dynamic";
  * Returns the full slot list for the week.
  */
 export async function POST(req: NextRequest) {
+  const uid = await currentUserId();
+  if (!uid) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const body = await req.json().catch(() => ({}));
   const week = isValidISO(String(body?.week)) ? mondayOf(String(body.week)) : null;
   const weekday = Math.round(Number(body?.weekday));
@@ -22,12 +26,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
 
+  const owns = await sql`
+    select 1 from categories where id = ${categoryId} and user_id = ${uid} limit 1
+  `;
+  if (owns.length === 0) {
+    return NextResponse.json({ error: "unknown category" }, { status: 404 });
+  }
+
   if (delta > 0) {
     const capped = Math.min(delta, 48); // sanity cap per request
     for (let i = 0; i < capped; i++) {
       await sql`
-        insert into slots (week_start, weekday, category_id)
-        values (${week}, ${weekday}, ${categoryId})
+        insert into slots (user_id, week_start, weekday, category_id)
+        values (${uid}, ${week}, ${weekday}, ${categoryId})
       `;
     }
   } else {
@@ -35,7 +46,8 @@ export async function POST(req: NextRequest) {
     await sql`
       delete from slots where id in (
         select id from slots
-        where week_start = ${week} and weekday = ${weekday} and category_id = ${categoryId}
+        where user_id = ${uid} and week_start = ${week}
+          and weekday = ${weekday} and category_id = ${categoryId}
         order by checked asc, id desc
         limit ${toRemove}
       )
@@ -45,7 +57,7 @@ export async function POST(req: NextRequest) {
   const slots = await sql`
     select id, weekday, category_id, checked
     from slots
-    where week_start = ${week}
+    where user_id = ${uid} and week_start = ${week}
     order by id asc
   `;
   return NextResponse.json({

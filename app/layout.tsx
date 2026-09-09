@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Nav from "@/components/Nav";
+import { signOut } from "@/auth";
 
 export const metadata: Metadata = {
   title: "조각 배분",
@@ -21,7 +22,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full">
         <div className="pb-nav mx-auto min-h-full max-w-md">{children}</div>
-        <Nav />
+        <Nav
+          signOutAction={async () => {
+            "use server";
+            await signOut({ redirectTo: "/login" });
+          }}
+        />
       </body>
     </html>
   );
