@@ -60,6 +60,10 @@ export const api = {
     }),
   toggleSlot: (id: number, checked: boolean) =>
     req<Slot>(`/api/slots/${id}`, { method: "PATCH", body: JSON.stringify({ checked }) }),
+  moveSlot: (id: number, weekday: number) =>
+    req<Slot>(`/api/slots/${id}`, { method: "PATCH", body: JSON.stringify({ weekday }) }),
+  deleteSlot: (id: number) =>
+    req<{ ok: true }>(`/api/slots/${id}`, { method: "DELETE" }),
   logout: () => req<{ ok: true }>("/api/login", { method: "DELETE" }),
 };
 
