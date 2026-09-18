@@ -20,6 +20,10 @@ export async function GET(req: NextRequest) {
       select id, name, pieces, color, sort_order
       from categories
       where user_id = ${uid} and archived = false
+        and (
+          week_start = ${week}
+          or id in (select category_id from slots where user_id = ${uid} and week_start = ${week})
+        )
       order by sort_order asc, id asc
     `,
     sql`

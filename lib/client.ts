@@ -8,6 +8,12 @@ export type Category = {
   sortOrder: number;
 };
 
+export type CategoryHistoryEntry = {
+  name: string;
+  color: string;
+  lastUsed: string;
+};
+
 export type Slot = {
   id: number;
   weekday: number;
@@ -46,8 +52,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ totalPieces }),
     }),
-  listCategories: () => req<Category[]>("/api/categories"),
-  addCategory: (c: { name: string; pieces: number; color: string }) =>
+  listCategories: (week: string) => req<Category[]>(`/api/categories?week=${week}`),
+  categoryHistory: (week: string) =>
+    req<CategoryHistoryEntry[]>(`/api/categories/history?week=${week}`),
+  addCategory: (c: { name: string; pieces: number; color: string; week: string }) =>
     req<Category>("/api/categories", { method: "POST", body: JSON.stringify(c) }),
   updateCategory: (id: number, patch: Partial<Omit<Category, "id">>) =>
     req<Category>(`/api/categories/${id}`, { method: "PUT", body: JSON.stringify(patch) }),

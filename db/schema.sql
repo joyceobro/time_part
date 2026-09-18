@@ -12,13 +12,21 @@ create table if not exists categories (
   id         serial primary key,
   user_id    text,
   name       text not null,
-  pieces     integer not null default 0,   -- planned pieces per week for this category
+  pieces     integer not null default 0,   -- planned pieces for this category, this week
   color      text not null default '#6b7280',
   sort_order integer not null default 0,
   archived   boolean not null default false,
   created_at timestamptz not null default now()
 );
 alter table categories add column if not exists user_id text;
+
+-- Categories are set up fresh per week (week_start = Monday); a category row
+-- only applies to the week it was created for. Existing rows (from before
+-- this column existed) are claimed by the current week so nothing in the
+-- ongoing week is lost.
+alter table categories add column if not exists week_start date;
+update categories set week_start = date_trunc('week', current_date)::date where week_start is null;
+alter table categories alter column week_start set not null;
 
 create table if not exists slots (
   id          serial primary key,
@@ -32,6 +40,7 @@ create table if not exists slots (
 alter table slots add column if not exists user_id text;
 
 create index if not exists categories_user_idx on categories (user_id);
+create index if not exists categories_user_week_idx on categories (user_id, week_start);
 create index if not exists slots_user_idx on slots (user_id);
 create index if not exists slots_week_idx on slots (week_start);
 create index if not exists slots_user_week_idx on slots (user_id, week_start, weekday, category_id);

@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CATEGORY_COLORS, api, type Category } from "@/lib/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CATEGORY_COLORS, api, type Category, type CategoryHistoryEntry } from "@/lib/client";
+import { addDays, mondayOf, weekLabel } from "@/lib/week";
 
 export default function SettingsPage() {
+  const [week, setWeek] = useState<string>(() => mondayOf());
   const [totalPieces, setTotalPieces] = useState(0);
   const [totalInput, setTotalInput] = useState("0");
   const [categories, setCategories] = useState<Category[]>([]);
+  const [history, setHistory] = useState<CategoryHistoryEntry[]>([]);
   const [error, setError] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
 
@@ -14,18 +17,34 @@ export default function SettingsPage() {
   const [newPieces, setNewPieces] = useState("");
   const [newColor, setNewColor] = useState(CATEGORY_COLORS[0]);
 
-  useEffect(() => {
-    api
-      .week(new Date().toISOString().slice(0, 10))
-      .then((d) => {
+  const load = useCallback((w: string) => {
+    setError("");
+    Promise.all([api.week(w), api.categoryHistory(w)])
+      .then(([d, h]) => {
+        setWeek(d.week);
         setTotalPieces(d.settings.totalPieces);
         setTotalInput(String(d.settings.totalPieces));
         setCategories(d.categories);
+        setHistory(h);
       })
       .catch((e) => setError(e.message));
   }, []);
 
+  useEffect(() => {
+    load(week);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function shiftWeek(d: number) {
+    load(mondayOf(addDays(week, d * 7)));
+  }
+
   const catSum = useMemo(() => categories.reduce((a, c) => a + c.pieces, 0), [categories]);
+  const catNames = useMemo(() => new Set(categories.map((c) => c.name)), [categories]);
+  const pickableHistory = useMemo(
+    () => history.filter((h) => !catNames.has(h.name)),
+    [history, catNames],
+  );
 
   function flash() {
     setSavedFlash(true);
@@ -63,11 +82,22 @@ export default function SettingsPage() {
         name,
         pieces: Math.max(0, Math.round(Number(newPieces) || 0)),
         color: newColor,
+        week,
       });
       setCategories((cs) => [...cs, c]);
       setNewName("");
       setNewPieces("");
       setNewColor(CATEGORY_COLORS[(categories.length + 1) % CATEGORY_COLORS.length]);
+      flash();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "추가 실패");
+    }
+  }
+
+  async function pickFromHistory(h: CategoryHistoryEntry) {
+    try {
+      const c = await api.addCategory({ name: h.name, pieces: 0, color: h.color, week });
+      setCategories((cs) => [...cs, c]);
       flash();
     } catch (err) {
       setError(err instanceof Error ? err.message : "추가 실패");
@@ -94,6 +124,26 @@ export default function SettingsPage() {
 
       {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
 
+      <div className="mb-4 rounded-xl border border-border bg-card px-2 py-2">
+        <div className="flex items-center justify-between">
+          <button onClick={() => shiftWeek(-1)} className="px-3 py-1 text-lg leading-none">
+            ‹
+          </button>
+          <span className="text-sm font-medium">{weekLabel(week)}</span>
+          <button onClick={() => shiftWeek(1)} className="px-3 py-1 text-lg leading-none">
+            ›
+          </button>
+        </div>
+        {week !== mondayOf() && (
+          <button
+            onClick={() => load(mondayOf())}
+            className="mt-1 w-full text-center text-xs text-muted"
+          >
+            이번 주로 이동
+          </button>
+        )}
+      </div>
+
       <section className="mb-4 rounded-xl border border-border bg-card p-3">
         <label className="text-sm font-medium">주당 총 조각 수</label>
         <p className="mb-2 text-xs text-muted">1조각 = 30분</p>
@@ -114,7 +164,7 @@ export default function SettingsPage() {
       </section>
 
       <section className="mb-4">
-        <div className="mb-2 flex items-baseline justify-between">
+        <div className="mb-1 flex items-baseline justify-between">
           <h2 className="text-sm font-semibold">카테고리별 배분</h2>
           <span
             className={`text-xs ${
@@ -124,6 +174,11 @@ export default function SettingsPage() {
             합계 {catSum} / {totalPieces}
           </span>
         </div>
+        <p className="mb-2 text-xs text-muted">카테고리는 매주 새로 설정해요.</p>
+
+        {categories.length === 0 && (
+          <p className="mb-2 text-xs text-muted">아직 이 주에 추가한 카테고리가 없어요.</p>
+        )}
 
         <div className="flex flex-col gap-2">
           {categories.map((c) => (
@@ -172,6 +227,27 @@ export default function SettingsPage() {
             </div>
           ))}
         </div>
+
+        {pickableHistory.length > 0 && (
+          <div className="mt-2">
+            <p className="mb-1.5 text-xs text-muted">기존 카테고리에서 선택</p>
+            <div className="flex flex-wrap gap-1.5">
+              {pickableHistory.map((h) => (
+                <button
+                  key={h.name}
+                  onClick={() => pickFromHistory(h)}
+                  className="flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs"
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: h.color }}
+                  />
+                  {h.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <form
           onSubmit={addCat}
