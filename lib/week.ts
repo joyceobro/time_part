@@ -13,9 +13,19 @@ export function toISO(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-/** Monday (ISO weekday 1) of the week containing `iso` or today. */
+/** Today's date (YYYY-MM-DD) in KST (UTC+9), regardless of server/browser timezone. */
+function todayKST(): string {
+  const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const kst = new Date(Date.now() + KST_OFFSET_MS);
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(kst.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Monday (ISO weekday 1) of the week containing `iso` or today (KST). */
 export function mondayOf(iso?: string): string {
-  const base = iso ? parseISO(iso) : parseISO(toISO(new Date(Date.now())));
+  const base = iso ? parseISO(iso) : parseISO(todayKST());
   const dow = base.getUTCDay(); // 0=Sun..6=Sat
   const deltaToMonday = dow === 0 ? -6 : 1 - dow;
   base.setUTCDate(base.getUTCDate() + deltaToMonday);
